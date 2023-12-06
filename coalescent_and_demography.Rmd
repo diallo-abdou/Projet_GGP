@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-packages <- c("coala","ape","ggplot2")
+packages <- c("coala","ape","ggplot2", "deSolve", "optimx","dplyr","sensitivity","tidyr","GGally")
 A <- lapply(
   packages,
   FUN = function(x) {
@@ -18,6 +18,7 @@ A <- lapply(
     }
   }
 )
+
 ```
 
 # Plan
@@ -70,12 +71,13 @@ Ainsi, `TCHANGE` est égal à $0.1$, indiquant que le changement de taille de po
 
 ```{r}
 # Default values corresponds to scenarios 1
+set.seed(123)
 
-NPAST <- 0.2 # Nanc/N0
-TCHANGE <- 10000/(2*50000) # 
+NPAST <- 0.2 
+TCHANGE <- 0.1 
 THETA <- 1
 
-model <- coal_model(sample_size = 100,loci_number = 1000,loci_length = 1000,ploidy = 2)
+model <- coal_model(sample_size = 10,loci_number = 100,loci_length = 100,ploidy = 2)
 model <- model <- model + feat_mutation(rate = THETA)
 model <- model + feat_size_change(new_size = NPAST,time = TCHANGE,population = "all")
 model <- model +
@@ -103,8 +105,6 @@ barplot(sim$sfs, main="SFS")
 tr <- read.tree(text = sim$trees[[1]][[1]])
 plot(tr,main="Example of a genealogy")
 
-plot(density(sim$Dtaj, na.rm = TRUE), 
-      main = "Distribution of Tajiam's D")
 ```
 
 
@@ -182,15 +182,13 @@ plot(density(sim$Dtaj, na.rm = TRUE),
 3) Additional question: write the code to compare the SFS under the two demographic scenarios and the constant population size secnario.
 
 
-# ABC avec Scénario 1
+## ABC avec Scénario 1
+
+
 
 ```{r}
 
 # Install and load the optimx package
-library(deSolve)
-library(ggplot2)
-library(optimx)
-
 
 # Your objective function to be minimized
 estimation <- function(x) {
@@ -198,15 +196,11 @@ estimation <- function(x) {
 # Default values corresponds to scenarios 1
 
   
-  
-N0 =x[1]
-Nanc=x[2]
-NPAST <-  Nanc/N0
-TCHANGE <- x[3] # a revoir peut être
-
+NPAST <- x[1]  
+TCHANGE <- x[2] 
 THETA <- 1
 
-model <- coal_model(sample_size = 100,loci_number = 1000,loci_length = 1000,ploidy = 2)
+model <- coal_model(sample_size = 10,loci_number = 100,loci_length = 100,ploidy = 2)
 model <- model <- model + feat_mutation(rate = THETA)
 model <- model + feat_size_change(new_size = NPAST,time = TCHANGE,population = "all")
 model <- model +
@@ -222,6 +216,7 @@ mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
 se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
 
 
+
   # Création d'un dataframe pour ggplot2
 simu <- data.frame(mean_pi = mean(sim$pi), 
                  se_pi = sd(sim$pi)/sqrt(NLOCI), 
@@ -229,12 +224,14 @@ simu <- data.frame(mean_pi = mean(sim$pi),
                  se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
 
   # Compare obs and simu
-  dist = sum((obs[,c("mean_pi", "se_pi", "mean_Dtaj", "se_Dtaj")] - 
-                simu[,c("mean_pi", "se_pi", "mean_Dtaj", "se_Dtaj")])^2)
+dist= sqrt ( sum  (   ( obs[,c("mean_pi", "mean_Dtaj")] / simu[,c("mean_pi", "mean_Dtaj")]  - 1 )^2)    )
+
   return(dist)
 }
 
+initial_guess <- c(0.2, 0.1)  # Replace with your own initial values
 
+estimation(initial_guess)
 
 
 # Rappel: 
@@ -247,26 +244,22 @@ simu <- data.frame(mean_pi = mean(sim$pi),
 #NPAST <-  Nanc/N0
 #TCHANGE <- x[3] # a revoir peut être
 
-# Initial guess
-initial_guess <- c(50000, 10000, 0.1)  # Replace with your own initial values
 
-estimation(initial_guess)
 
-df_stock <- data.frame(NO = character(), 
+df_stock <- data.frame( 
                  Nanc = character(), 
                  TCHANGE = character(), 
                  
                  dist= character())
 start_time100 <- Sys.time()
 
-for (i in c(1:100)) {
-  NO <- runif(n = 1,min = 1000,max = 100000)
-  Nanc <- runif(n = 1,min = 1000,max = 100000)
-  TCHANGE <- runif(n = 1,min = 0,max = 1) 
+for (i in c(1:10000)) {
+  Nanc <- runif(n = 1,min = 0.01,max = 0.7)
+  TCHANGE <- runif(n = 1,min = 0.01,max = 0.9) 
   
-  valeurs=c(NO,Nanc,TCHANGE)
+  valeurs=c(Nanc,TCHANGE)
   
-  df_i=data.frame(NO = NO, 
+  df_i=data.frame(
                  Nanc = Nanc, 
                  TCHANGE = TCHANGE, 
                  dist= estimation(valeurs))
@@ -277,49 +270,85 @@ for (i in c(1:100)) {
 end_time100 <- Sys.time() 
 execution_time <- end_time100 - start_time100; execution_time
 
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-library(GGally)
 
 df <- df_stock %>% arrange(dist)
 top_100 <- head(df, 50)
 
-ggpairs(top_100[,1:3])
+ggpairs(top_100[,1:2])
 
-for (i in 1:3){ 
+summary(top_100)
+
+for (i in 1:2){ 
 plot(density(top_100[,i], na.rm = TRUE), 
-      main = paste0("Distribution de :",i ))
+      main = paste0("Distribution de :",names(top_100[,i]) ))
 }
 
 
 ```
 
+
+## Echantillonnage avec la méthode FAST
 ```{r}
 # Avec FAST
 
-# Bornes des intervalles d’incertitude (lois uniformes)
 
-borne_para <- apply(matrix_para,
-                     2,
-                     function(x) {
-                       list(mean = mean(x), sd = sd(x))
-                     })
+borne_para <- list(list(min=0.01,max=10),
+                   list(min=0.01,max=5))
 
-
-
+nom=c("Nanc","TCHANGE")
 # QUESTION b: Cas a 100 scenario
 start_time100 <- Sys.time()
 
-fast100 <- fast99(model=NULL,
+fast10000 <- fast99(model=NULL,
                       factors=nom,
-                      n=100,
-                      q=rep("qnorm",15),
+                      n=10000,
+                      q=rep("qunif",2),
                       q.arg=borne_para)
 
 
-end_time100 <- Sys.time() 
-execution_time <- end_time100 - start_time100
-execution_time
+
+
+
+val= fast10000$X
+
+plot(val$Nanc)
+plot(val$TCHANGE)
+
+
+
+start_time <- Sys.time()
+fast_df_stock <- data.frame( 
+                 Nanc = character(), 
+                 TCHANGE = character(), 
+                 dist= character())
+
+for (i in 1:nrow(val)){
+  
+  
+  df=data.frame(Nanc= val[i,1], 
+                TCHANGE= val[i,2],
+                dist=estimation(c(val[i,1],val[i,2]) ) )
+  
+  fast_df_stock = rbind(fast_df_stock,df)
+  
+}
+
+end_time <- Sys.time() 
+execution_time <- end_time - start_time; execution_time
+
+
+
+
+fast_df <- fast_df_stock %>% arrange(dist)
+fast_top_50 <- head(fast_df, 50)
+
+ggpairs(fast_top_50[,1:2])
+
+summary(fast_top_50)
+
+for (i in 1:2){ 
+plot(density(fast_top_50[,i], na.rm = TRUE), 
+      main = paste0("Distribution de :",names(fast_top_50[,i]) ))
+}
 ```
 
