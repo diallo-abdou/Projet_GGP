@@ -71,8 +71,14 @@ Ainsi, `TCHANGE` est égal à $0.1$, indiquant que le changement de taille de po
 
 ```{r}
 # Default values corresponds to scenarios 1
-set.seed(123)
 
+# Création des 30 jdd observé
+set.seed(123)
+n_obs=30
+tot_obs <- data.frame(mean_pi = character(),
+                 mean_Dtaj = character())
+
+for (i in 1:n_obs) { 
 NPAST <- 0.2 
 TCHANGE <- 0.1 
 THETA <- 1
@@ -88,15 +94,23 @@ model <- model +
 sim <- simulate(model)
 
 mean_pi <- mean(sim$pi)
-se_pi <- sd(sim$pi)/sqrt(NLOCI)
+#se_pi <- sd(sim$pi)/sqrt(NLOCI)
 mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
-se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
+#se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
 
 
 obs <- data.frame(mean_pi = mean(sim$pi), 
-                 se_pi = sd(sim$pi)/sqrt(NLOCI), 
-                 mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
-                 se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T)
+                 )
+
+tot_obs=rbind(tot_obs,obs)
+
+}
+tot_obs
+
+plot(tot_obs$mean_pi)
+plot(tot_obs$mean_Dtaj)
+
 
 layout(matrix(c(1:4),2,2))
 hist(sim$pi,main=paste("Mean pi =",round(mean_pi,2)," +/- ",round(1.96*se_pi,2)),breaks=30)
@@ -187,15 +201,9 @@ plot(density(sim$Dtaj, na.rm = TRUE),
 
 
 ```{r}
-
-# Install and load the optimx package
-
-# Your objective function to be minimized
-estimation <- function(x) {
-
+estimation <- function(x,obs_donnee) {
 # Default values corresponds to scenarios 1
 
-  
 NPAST <- x[1]  
 TCHANGE <- x[2] 
 THETA <- 1
@@ -205,83 +213,116 @@ model <- model <- model + feat_mutation(rate = THETA)
 model <- model + feat_size_change(new_size = NPAST,time = TCHANGE,population = "all")
 model <- model +
   sumstat_tajimas_d(name = "Dtaj") +
-  sumstat_nucleotide_div(name = "pi") +
-  sumstat_sfs(name="sfs") +
-  sumstat_trees(name="trees")
+  sumstat_nucleotide_div(name = "pi")
 sim <- simulate(model)
 
 mean_pi <- mean(sim$pi)
-se_pi <- sd(sim$pi)/sqrt(NLOCI)
+#se_pi <- sd(sim$pi)/sqrt(NLOCI)
 mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
-se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
-
-
+#se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
 
   # Création d'un dataframe pour ggplot2
 simu <- data.frame(mean_pi = mean(sim$pi), 
-                 se_pi = sd(sim$pi)/sqrt(NLOCI), 
-                 mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
-                 se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T))
 
   # Compare obs and simu
-dist= sqrt ( sum  (   ( obs[,c("mean_pi", "mean_Dtaj")] / simu[,c("mean_pi", "mean_Dtaj")]  - 1 )^2)    )
+dist= sqrt ( sum  (   ( obs_donnee[,c("mean_pi", "mean_Dtaj")] / 
+                          simu[,c("mean_pi", "mean_Dtaj")]  - 1 )^2)    )
 
   return(dist)
 }
 
-initial_guess <- c(0.2, 0.1)  # Replace with your own initial values
+#initial_guess <- c(0.2, 0.1)  # Replace with your own initial values
+#estimation(initial_guess,tot_obs[1,])
 
-estimation(initial_guess)
+# une liste pour stocker les df des simu
 
+top_1000_df <- list()
+n_iteration=10000
+start_time100 <- Sys.time()
 
-# Rappel: 
-## Scénario 1
-
-# Une population ancestrale de taille $N_{anc}=10 000$ qui passe à $N_0=50 000$ 10 000 générations dans le passé.
-
-#N0 =x[1]
-#Nanc=x[2]
-#NPAST <-  Nanc/N0
-#TCHANGE <- x[3] # a revoir peut être
-
-
-
+for (num_obs in 1:nrow(tot_obs)) { 
+# stock des estimations
 df_stock <- data.frame( 
                  Nanc = character(), 
                  TCHANGE = character(), 
-                 
                  dist= character())
-start_time100 <- Sys.time()
-
-for (i in c(1:10000)) {
-  Nanc <- runif(n = 1,min = 0.01,max = 0.7)
-  TCHANGE <- runif(n = 1,min = 0.01,max = 0.9) 
-  
+# simulation
+for (i in 1:n_iteration) {
+  Nanc <- runif(n = 1,min = 0.01,max = 0.5)
+  TCHANGE <- runif(n = 1,min = 0.01,max = 0.5) 
   valeurs=c(Nanc,TCHANGE)
-  
   df_i=data.frame(
                  Nanc = Nanc, 
                  TCHANGE = TCHANGE, 
-                 dist= estimation(valeurs))
-  
+                 dist= estimation(valeurs,tot_obs[num_obs,]))
   df_stock=rbind(df_stock,df_i)
+}
+
+df <- df_stock %>% arrange(dist)
+top_100 <- head(df, 100)
+top_1000_df[[paste0("estima_avec_obs_", num_obs)]] <- top_100
 }
 
 end_time100 <- Sys.time() 
 execution_time <- end_time100 - start_time100; execution_time
 
+#top_1000_df[["estima_avec_obs_1"]]
+#summary( top_1000_df[["estima_avec_obs_1"]] )
 
-df <- df_stock %>% arrange(dist)
-top_100 <- head(df, 50)
+# on combine tous les top 100 
+all_top_1000<- data.frame(
+  Nanc = character(),
+  TCHANGE = character(),
+  dist = character()
+)
 
-ggpairs(top_100[,1:2])
-
-summary(top_100)
-
-for (i in 1:2){ 
-plot(density(top_100[,i], na.rm = TRUE), 
-      main = paste0("Distribution de :",names(top_100[,i]) ))
+sctoc=data.frame(moy_Nanc=character(),
+                 moy_TCHANGE=character(),
+                 moy_dis=character()
+                 )
+for (k in 1:100) {
+  nom_df = paste0("estima_avec_obs_", k)
+  all_top_1000 <- rbind(top_1000_1000, top_1000_df[[nom_df]][,1] )
+  # validité
+  
+  moy= data.frame(moy_Nanc=top_1000_df[[nom_df]][,1],
+                 moy_TCHANGE=top_1000_df[[nom_df]][,2],
+                 moy_dis=top_1000_df[[nom_df]][,3]
+                 )
+  sctoc=rbind(sctoc, moy)
 }
+
+all_top_1000_trie <- all_top_1000 %>% arrange(dist)
+top_1000_1000 = head(all_top_1000_trie,100)
+top_1000_1000
+
+# validité
+hist(sctoc$moy_Nanc)
+mean(sctoc$moy_Nanc)
+sd(sctoc$moy_Nanc)
+
+# rappel NPAST <- 0.2 , TCHANGE <- 0.1 
+ggpairs(top_1000_1000[,1:2])
+summary(top_1000_1000)
+
+var(top_1000_1000$dist)
+var(tot_obs$mean_pi)
+var(tot_obs$mean_Dtaj)
+
+
+dens <- density(top_1000_1000[, 1], na.rm = TRUE)
+plot(dens, main = paste0("Distribution de Nanc"))
+abline(v = 0.2, col = "green", lty = 2)# barre verticale
+lines(density(runif(100, min = 0.01, max = 1)), col = "red", lty = 3) # Prior
+legend("topright", legend = c("Posterior","valeurs de base","Prior"), col = c("black","green","red"), lty = c(1,2,3))
+
+dens <- density(top_1000_1000[, 2], na.rm = TRUE)
+plot(dens, main = paste0("Distribution de TCHANGE"))
+abline(v = 0.1, col = "green", lty = 2)# barre verticale
+lines(density(runif(100, min = 0.01, max = 0.5)), col = "red", lty = 3) # Prior
+legend("topright", legend = c("Posterior","valeurs de base","Prior"), col = c("black","green","red"), lty = c(1,2,3))
+
 
 
 ```
@@ -290,30 +331,19 @@ plot(density(top_100[,i], na.rm = TRUE),
 ## Echantillonnage avec la méthode FAST
 ```{r}
 # Avec FAST
-
-
-borne_para <- list(list(min=0.01,max=10),
+borne_para <- list(list(min=0.01,max=5),
                    list(min=0.01,max=5))
 
 nom=c("Nanc","TCHANGE")
-# QUESTION b: Cas a 100 scenario
-start_time100 <- Sys.time()
-
 fast10000 <- fast99(model=NULL,
                       factors=nom,
                       n=10000,
                       q=rep("qunif",2),
                       q.arg=borne_para)
 
-
-
-
-
 val= fast10000$X
-
 plot(val$Nanc)
 plot(val$TCHANGE)
-
 
 
 start_time <- Sys.time()
@@ -323,32 +353,37 @@ fast_df_stock <- data.frame(
                  dist= character())
 
 for (i in 1:nrow(val)){
-  
-  
   df=data.frame(Nanc= val[i,1], 
                 TCHANGE= val[i,2],
                 dist=estimation(c(val[i,1],val[i,2]) ) )
-  
   fast_df_stock = rbind(fast_df_stock,df)
   
 }
 
 end_time <- Sys.time() 
-execution_time <- end_time - start_time; execution_time
+times_fast <- end_time - start_time; times_fast
 
-
-
-
+# on recupere les 100
 fast_df <- fast_df_stock %>% arrange(dist)
-fast_top_50 <- head(fast_df, 50)
+fast_top_100 <- head(fast_df, 1000)
 
-ggpairs(fast_top_50[,1:2])
+ggpairs(fast_top_100[,1:2])
+summary(fast_top_100)
+var(fast_top_100$dist)
 
-summary(fast_top_50)
 
-for (i in 1:2){ 
-plot(density(fast_top_50[,i], na.rm = TRUE), 
-      main = paste0("Distribution de :",names(fast_top_50[,i]) ))
-}
+
+dens <- density(fast_top_100[, 1], na.rm = TRUE)
+plot(dens, main = paste0("Distribution de Nanc"),xlim=c(0,5))
+abline(v = 0.2, col = "green", lty = 2)# barre verticale
+lines(density(runif(1000, min = 0.01, max = 5)), col = "red", lty = 3) # Prior
+legend("topright", legend = c("Posterior","valeurs de base","Prior"), col = c("black","green","red"), lty = c(1,2,3))
+
+dens <- density(fast_top_100[, 2], na.rm = TRUE)
+plot(dens, main = paste0("Distribution de TCHANGE"),xlim=c(0,5))
+abline(v = 0.1, col = "green", lty = 2)# barre verticale
+lines(density(runif(1000, min = 0.01, max = 5)), col = "red", lty = 3) # Prior
+legend("topright", legend = c("Posterior","valeurs de base","Prior"), col = c("black","green","red"), lty = c(1,2,3))
+
 ```
 
