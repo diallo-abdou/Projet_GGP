@@ -323,4 +323,300 @@ execution_time <- end_time100 - start_time100
 execution_time
 ```
 
+## Bottelneck
 
+Création du jeu de la simulation observée. Taille de pop ancestrale identique à celle actuelle, mais chute de 90% lors du bottleneck
+
+```{r}
+THETA <- 1
+NLOCI <- 100
+model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  feat_size_change(0.1, time = 0.25) +
+  feat_size_change(1, time = 0.5)+
+  sumstat_sfs("sfs")+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi") 
+sim <- simulate(model_bottleneck)
+
+ obs <- data.frame(mean_pi = mean(sim$pi), 
+                  se_pi = sd(sim$pi)/sqrt(NLOCI), 
+                  mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
+                  se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+```
+Fonction d'estimation pour un scénario de bottleneck. On souhaite estimer 2 paramètres: la durée du bottleneck et l'intensité du bottleneck.
+```{r}
+
+# Install and load the optimx package
+library(deSolve)
+library(ggplot2)
+library(optimx)
+
+
+# Your objective function to be minimized 
+estimation_bottleneck <- function(x, obs) {
+
+# Default values corresponds to scenarios 1
+
+  
+NPAST1 <-  x[1]
+TCHANGE1 <- x[2] 
+NPAST2 <-  x[3]
+TCHANGE2 <- x[4] 
+
+NLOCI <- 100
+THETA <- 1
+
+model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  feat_size_change(NPAST2, time = TCHANGE2) +
+  feat_size_change(NPAST1, time = TCHANGE1)+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi") 
+sim <- simulate(model_bottleneck)
+
+# mean_pi <- mean(sim$pi)
+# se_pi <- sd(sim$pi)/sqrt(NLOCI)
+# mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
+# se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
+
+
+  # Création d'un dataframe pour ggplot2
+simu <- data.frame(mean_pi = mean(sim$pi), 
+                 se_pi = sd(sim$pi)/sqrt(NLOCI), 
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
+                 se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+
+  # Compare obs and simu
+  dist = sqrt(sum((obs[,c("mean_pi", "se_pi", "mean_Dtaj", "se_Dtaj")]/simu[,c("mean_pi", "se_pi", "mean_Dtaj", "se_Dtaj")]-1)^2))
+  return(dist)
+}
+
+
+
+
+# Rappel: 
+## Scénario 1
+
+# Une population ancestrale de taille $N_{anc}=10 000$ qui passe à $N_0=50 000$ 10 000 générations dans le passé.
+
+#N0 =x[1]
+#Nanc=x[2]
+#NPAST <-  Nanc/N0
+#TCHANGE <- x[3] # a revoir peut être
+
+# Initial guess
+initial_guess <- c(1, 0.5, 0.1,0.25)  # Replace with your own initial values
+
+estimation_bottleneck(initial_guess,obs)
+
+df_stock <- data.frame(NPAST1 = character(), 
+                 TCHANGE1 = character(),
+                 NPAST2 = character(), 
+                 TCHANGE2 = character(), 
+                 dist= character())
+#start_time100 <- Sys.time()
+
+for (i in c(1:1000)) {
+  NPAST1 <- runif(n = 1,min = 0.1,max = 5)
+  TCHANGE1 <- runif(n = 1,min = 0,max = 2)
+  NPAST2 <- runif(n = 1,min = 0.1,max = NPAST1)
+  TCHANGE2 <- runif(n = 1,min = 0,max = TCHANGE1) 
+  
+  valeurs=c(NPAST1,TCHANGE1,NPAST2,TCHANGE2)
+  
+  df_i=data.frame(NPAST1 = NPAST1, 
+                 TCHANGE1 = TCHANGE1,
+                 NPAST2 = NPAST2, 
+                 TCHANGE2 = TCHANGE2, 
+                 dist= estimation_bottleneck(valeurs))
+  
+  df_stock=rbind(df_stock,df_i)
+}
+
+#end_time100 <- Sys.time() 
+#execution_time <- end_time100 - start_time100; execution_time
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(GGally)
+
+df <- df_stock %>% arrange(dist)
+top_100 <- head(df, 50)
+
+ggpairs(top_100[,1:4])
+
+for (i in 1:4){ 
+plot(density(top_100[,i], na.rm = TRUE), 
+      main = paste0("Distribution de :",colnames(top_100)[i] ))
+}
+apply(top_100,2,min)
+apply(top_100,2,max)
+apply(df_stock,2,min)
+apply(df_stock,2,max)
+min(top_100[,1])
+
+```
+
+```{r}
+#but : on fractionne nos nb_simul en sep part égales (si nb_simul = 1000 simul et sep = 10 on réalise 100 "sous simulations"). Pour une sous simulation t, on tire dans les lois uniformes dont les bornes correspondent aux valeurs min et max des meilleurs paramètres estimés pour la sous simulation t-1. Idée: rétricir les bornes à dans lesquelles on tire pour se rapprocher au fur et a mesure des meilleurs paramètres et gagner en précision.
+estimation_V2 <- function(nb_simul, sep, obs, coupe){
+  df_stock <- data.frame(NPAST1 = character(), 
+                 TCHANGE1 = character(),
+                 NPAST2 = character(), 
+                 TCHANGE2 = character(), 
+                 dist= character())
+  for (k in 1:sep) {
+    if(k==1){
+      min_NPAST1 <- 0.1
+      max_NPAST1 <- 5
+      min_TCHANGE1 <- 0
+      max_TCHANGE1 <- 2
+      min_NPAST2 <- 0.1
+      min_TCHANGE2 <- 0
+    }
+    for (i in 1:(nb_simul/sep)){
+      NPAST1 <- runif(n = 1,min = min_NPAST1,max = max_NPAST1)
+      TCHANGE1 <- runif(n = 1,min = min_TCHANGE1,max = max_TCHANGE1)
+      NPAST2 <- runif(n = 1,min = min_NPAST2,max = NPAST1)
+      TCHANGE2 <- runif(n = 1,min = min_TCHANGE2,max = TCHANGE1) 
+  
+      valeurs=c(NPAST1,TCHANGE1,NPAST2,TCHANGE2)
+  
+      df_i=data.frame(NPAST1 = NPAST1, 
+                    TCHANGE1 = TCHANGE1,
+                    NPAST2 = NPAST2, 
+                    TCHANGE2 = TCHANGE2, 
+                    dist= estimation_bottleneck(valeurs, obs))
+  
+      df_stock=rbind(df_stock,df_i)
+    }
+    df <- df_stock %>% arrange(dist)
+    top <- head(df, ceiling(5*(nb_simul/sep)/100)) #10% les meilleures
+    min_NPAST1 <- min(top[,1])
+    max_NPAST1 <- max(top[,1])
+    min_TCHANGE1 <- min(top[,2])
+    max_TCHANGE1 <- max(top[,2])
+    min_NPAST2 <- min(top[,3])
+    min_TCHANGE2 <- min(top[,4])
+  }
+  if(coupe){
+    df_stock <- df_stock %>% arrange(dist)
+    top <- head(df_stock, ceiling(5*(nb_simul)/100)) #10% les meilleures
+    return(top)
+  }else{
+    return(df_stock)
+  }
+}
+
+library(reshape)
+#V3 où on estime 100 jeux de data et on fait la procédure si dessus pour les 100 jeux
+bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe){
+  #paramètres pour les nb_obs estimations observés
+  NPAST1 <-  param[1]
+  TCHANGE1 <- param[2] 
+  NPAST2 <-  param[3]
+  TCHANGE2 <- param[4] 
+  NLOCI <- 100
+  THETA <- 1
+  
+  big_data <- data.frame()
+  data_obs <- data.frame()
+  for (j in 1:(nb_obs)) {
+    if(j%in%seq(nb_obs/10,nb_obs,10)){
+      print(paste0(j, "%"))
+    }
+    #simulation d'un jeu de données obs
+    model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  feat_size_change(NPAST2, time = TCHANGE2) +
+  feat_size_change(NPAST1, time = TCHANGE1)+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi")
+    sim <- simulate(model_bottleneck)
+
+    obs <- data.frame(mean_pi = mean(sim$pi), 
+                      se_pi = sd(sim$pi)/sqrt(NLOCI), 
+                      mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
+                      se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+    data_obs <- rbind(data_obs,obs)
+    # simulation de nb_simul jeux de données simulés dont on va déterminer les paramètres
+    results <- estimation_V2(nb_simul,sep,obs,coupe)
+    big_data <- rbind(big_data,results)
+  }
+  if(coupe){
+    big_data$obs <- melt(sapply(1:nb_obs, rep, ceiling(nb_simul*0.05)))$value
+    return(list(big_data, data_obs))
+  }else{
+    big_data$obs <- melt(sapply(1:nb_obs, rep, nb_simul))$value
+  return(list(big_data, data_obs))
+  }
+}
+
+```
+
+```{r}
+results <- estimation_V2(100,1, obs, coupe=F)
+```
+```{r}
+results <- bottleneck_V3(20,50,2, coupe = T)
+#results <- bottleneck_V3(100,10,1, coupe = F)
+```
+
+```{r}
+df <- results[[1]] %>% arrange(dist)
+top_100 <- head(df, 100)
+
+for (i in 1:4){ 
+  print(ggplot(top_100)+
+  geom_histogram(aes(x=top_100[,i], y=after_stat(density)), position = "identity", bins = 15)+
+  geom_density(aes(x=top_100[,i]))+
+  labs(title = paste0("Distribution de ",colnames(top_100)[i]))+
+  geom_vline(xintercept = mean(top_100[,i]), color='red'))
+}
+for (i in 1:4){ 
+  print(ggplot(results[[1]])+
+  geom_histogram(aes(x=results[[1]][,i], y=after_stat(density)), position = "identity", bins = 15)+
+  geom_density(aes(x=results[[1]][,i]))+
+  labs(title = paste0("Distribution de ",colnames(results[[1]])[i]))+
+  geom_vline(xintercept = mean(results[[1]][,i]), color='red'))
+}
+
+mean_mean <- data.frame()
+for (i in 1:length(unique(results[[1]]$obs))) {
+  subdata <- results[[1]][which(results[[1]]$obs==i),]
+  mean_mean <- rbind(mean_mean,apply(subdata,2,mean))
+}
+colnames(mean_mean) <- colnames(results[[1]])
+ecart_entre_obs <- apply(mean_mean,2,sd)
+
+#compare aux 100 obs
+ecart_entre_observes <- apply(results[[2]],2,sd)
+ecart_entre_obs
+ecart_entre_observes
+```
+
+
+```{r}
+#T1-T2 pour avoir la distribution du temps du bottleneck
+results[[1]]$duree <- results[[1]]$TCHANGE1-results[[1]]$TCHANGE2
+results[[1]]$intensite <- results[[1]]$NPAST1/results[[1]]$NPAST2
+top_100$duree <- top_100$TCHANGE1-top_100$TCHANGE2
+top_100$intensite <- top_100$NPAST1/top_100$NPAST2
+
+for (i in 7:8){ 
+  print(ggplot(top_100)+
+  geom_histogram(aes(x=top_100[,i], y=after_stat(density)), position = "identity", bins = 15)+
+  geom_density(aes(x=top_100[,i]))+
+  labs(title = paste0("Distribution de ",colnames(top_100)[i]))+
+  geom_vline(xintercept = mean(top_100[,i]), color='red'))
+}
+for (i in 7:8){ 
+  print(ggplot(results[[1]])+
+  geom_histogram(aes(x=results[[1]][,i], y=after_stat(density)), position = "identity", bins = 15)+
+  geom_density(aes(x=results[[1]][,i]))+
+  labs(title = paste0("Distribution de ",colnames(results[[1]])[i]))+
+  geom_vline(xintercept = mean(results[[1]][,i]), color='red'))
+}
+```
