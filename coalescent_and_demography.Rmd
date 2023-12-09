@@ -85,6 +85,7 @@ ggplot()+
 
 ```
 
+## bottleneck avec 30 simulations
 ```{r}
 # Default values corresponds to scenarios 1
 
@@ -159,15 +160,83 @@ ggplot()+
 
 # sans évolution de la taille de population
 ```{r}
+n_obs=30
+tot_obs_no_change <- data.frame(mean_pi = character(),
+                 mean_Dtaj = character(),
+                 mean_coal_time = character())
 
-#dist= sqrt(sum(( obs_donnee[,c("mean_pi", "mean_Dtaj")] /simu[,c("mean_pi","mean_Dtaj")] -1 )^2)    )
+for (i in 1:n_obs) { 
+NPAST <- 0.2 
+TCHANGE <- 0.1 
+THETA <- 1
+NLOCI <- 100
+
+model2 <- coal_model(sample_size =  20,loci_number =  NLOCI,loci_length =  NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  sumstat_sfs("sfs")+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi")+
+  sumstat_trees(name="trees") 
+set.seed(i)
+sim2 <- simulate(model2)
+
+mean_pi <- mean(sim2$pi)
+#se_pi <- sd(sim$pi)/sqrt(NLOCI)
+mean_Dtaj <- mean(sim2$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
+#se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
+coal_time_temp <- rep(NA,100)
+for (i in 1:NLOCI) {
+  tr <- read.tree(text = sim2$trees[[i]][[1]])
+  btimes=sum(branching.times(as.phylo(tr)))
+  coal_time_temp[i] <- btimes
+}
+
+
+
+
+obs_no_change <- data.frame(mean_pi = mean(sim2$pi), 
+                 mean_Dtaj = mean(sim2$Dtaj,na.rm = T),
+                 mean_coal_time = mean(coal_time_temp,na.rm = T)
+                 )
+
+tot_obs_no_change=rbind(tot_obs_no_change,obs_no_change)
+
+}
+tot_obs_no_change
+
+ggplot()+
+  geom_histogram(aes(x = tot_obs_no_change$mean_pi),color = "black", fill = "white",bins = 10)+
+  labs(title = "Mean pi distribution")+
+  xlab("mean pi")+
+  theme_classic()
+
+ggplot()+
+  geom_histogram(aes(x = tot_obs_no_change$mean_Dtaj),color = "black", fill = "white",bins = 10)+
+  labs(title = "Mean Dtaj distribution")+
+  xlab("mean Dtaj")+
+  theme_classic()
+
+ggplot()+
+  geom_histogram(aes(x = tot_obs_no_change$mean_coal_time),color = "black", fill = "white",bins = 10)+
+  labs(title = "Mean time to MRCA distribution")+
+  xlab("Mean time to MRCA")+
+  theme_classic()
+
+
 ```
 
+## Calcul de la distance
 
+```{r}
+dist = apply((tot_obs_no_change[,c("mean_pi", "mean_Dtaj","mean_coal_time")]/tot_obs[,c("mean_pi","mean_Dtaj","mean_coal_time")] -1 )^2,MARGIN = 1,function(x) sqrt(sum(x)))
 
+ggplot()+
+  geom_histogram(aes(x = dist),color = "black", fill = "white",bins = 10)+
+  labs(title = paste("Mean Distance between two simulations = ",round(dist,2)," +/- ",round(1.96*sd(dist)/sqrt(length(dist)),2)))+
+  xlab("Distance between two simulations")+
+  theme_classic()
 
-
-
+```
 
 
 
