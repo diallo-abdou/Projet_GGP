@@ -401,18 +401,26 @@ model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
   feat_size_change(NPAST2, time = TCHANGE2) +
   feat_size_change(NPAST1, time = TCHANGE1)+
   sumstat_tajimas_d(name = "Dtaj") +
-  sumstat_nucleotide_div(name = "pi") 
+  sumstat_nucleotide_div(name = "pi")+
+  sumstat_trees("trees")
 sim <- simulate(model_bottleneck)
 
 # mean_pi <- mean(sim$pi)
 # se_pi <- sd(sim$pi)/sqrt(NLOCI)
 # mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
 # se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
+coal_time_temp <- rep(NA,100)
+for (i in 1:NLOCI) {
+  tr <- read.tree(text = sim$trees[[i]][[1]])
+  btimes=sum(branching.times(as.phylo(tr)))
+  coal_time_temp[i] <- btimes
+}
 
 
   # Création d'un dataframe pour ggplot2
 simu <- data.frame(mean_pi = mean(sim$pi), 
-                 mean_Dtaj = mean(sim$Dtaj,na.rm = T))
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T),
+                 mean_coal_time <- mean(coal_time_temp, na.rm=T))
 
   # Compare obs and simu
   dist = sqrt(sum((obs[,c("mean_pi", "mean_Dtaj")]/simu[,c("mean_pi", "mean_Dtaj")]-1)^2))
@@ -550,7 +558,6 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   
   big_data <- data.frame()
   data_obs <- data.frame()
-  set.seed(123)
   for (j in 1:(nb_obs)) {
     #if(j%in%seq(nb_obs/10,nb_obs,10)){
     #  print(paste0(j/nb_obs*100, "%"))
@@ -561,12 +568,21 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   feat_size_change(NPAST2, time = TCHANGE2) +
   feat_size_change(NPAST1, time = TCHANGE1)+
   sumstat_tajimas_d(name = "Dtaj") +
-  sumstat_nucleotide_div(name = "pi")
-    #set.seed(j)
+  sumstat_nucleotide_div(name = "pi")+
+      sumstat_trees("trees")
+    set.seed(j)
     sim <- simulate(model_bottleneck)
+    
+    coal_time_temp <- rep(NA,100)
+for (i in 1:NLOCI) {
+  tr <- read.tree(text = sim$trees[[i]][[1]])
+  btimes=sum(branching.times(as.phylo(tr)))
+  coal_time_temp[i] <- btimes
+}
 
     obs <- data.frame(mean_pi = mean(sim$pi), 
-                      mean_Dtaj = mean(sim$Dtaj,na.rm = T))
+                      mean_Dtaj = mean(sim$Dtaj,na.rm = T),
+                      mean_coal_time = mean(coal_time_temp, na.rm=T))
     data_obs <- rbind(data_obs,obs)
     # simulation de nb_simul jeux de données simulés dont on va déterminer les paramètres
     results <- estimation_V2(nb_simul,sep,obs,coupe)
