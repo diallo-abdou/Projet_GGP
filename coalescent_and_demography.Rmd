@@ -83,7 +83,7 @@ NPAST <- 0.2
 TCHANGE <- 0.1 
 THETA <- 1
 
-model <- coal_model(sample_size = 10,loci_number = 100,loci_length = 100,ploidy = 2)
+model <- coal_model(sample_size = 20,loci_number = 100,loci_length = 100,ploidy = 2)
 model <- model <- model + feat_mutation(rate = THETA)
 model <- model + feat_size_change(new_size = NPAST,time = TCHANGE,population = "all")
 model <- model +
@@ -208,7 +208,7 @@ NPAST <- x[1]
 TCHANGE <- x[2] 
 THETA <- 1
 
-model <- coal_model(sample_size = 10,loci_number = 100,loci_length = 100,ploidy = 2)
+model <- coal_model(sample_size = 20,loci_number = 100,loci_length = 100,ploidy = 2)
 model <- model <- model + feat_mutation(rate = THETA)
 model <- model + feat_size_change(new_size = NPAST,time = TCHANGE,population = "all")
 model <- model +
@@ -249,8 +249,8 @@ df_stock <- data.frame(
                  dist= character())
 # simulation
 for (i in 1:n_iteration) {
-  Nanc <- runif(n = 1,min = 0.01,max = 0.5)
-  TCHANGE <- runif(n = 1,min = 0.01,max = 0.5) 
+  Nanc <- runif(n = 1,min = 1,max = 5)
+  TCHANGE <- runif(n = 1,min = 1,max = 5) 
   valeurs=c(Nanc,TCHANGE)
   df_i=data.frame(
                  Nanc = Nanc, 
@@ -262,6 +262,8 @@ for (i in 1:n_iteration) {
 df <- df_stock %>% arrange(dist)
 top_100 <- head(df, 100)
 top_1000_df[[paste0("estima_avec_obs_", num_obs)]] <- top_100
+
+message("Iteration: ", num_obs, " sur ", nrow(tot_obs))
 }
 
 end_time100 <- Sys.time() 
@@ -281,9 +283,9 @@ sctoc=data.frame(moy_Nanc=character(),
                  moy_TCHANGE=character(),
                  moy_dis=character()
                  )
-for (k in 1:100) {
+for (k in 1:nrow(tot_obs)) {
   nom_df = paste0("estima_avec_obs_", k)
-  all_top_1000 <- rbind(top_1000_1000, top_1000_df[[nom_df]][,1] )
+  all_top_1000 <- rbind(all_top_1000, top_1000_df[[nom_df]] )
   # validité
   
   moy= data.frame(moy_Nanc=top_1000_df[[nom_df]][,1],
@@ -314,13 +316,13 @@ var(tot_obs$mean_Dtaj)
 dens <- density(top_1000_1000[, 1], na.rm = TRUE)
 plot(dens, main = paste0("Distribution de Nanc"))
 abline(v = 0.2, col = "green", lty = 2)# barre verticale
-lines(density(runif(100, min = 0.01, max = 1)), col = "red", lty = 3) # Prior
+lines(density(runif(10, min = 0.01, max = 5)), col = "red", lty = 3) # Prior
 legend("topright", legend = c("Posterior","valeurs de base","Prior"), col = c("black","green","red"), lty = c(1,2,3))
 
 dens <- density(top_1000_1000[, 2], na.rm = TRUE)
 plot(dens, main = paste0("Distribution de TCHANGE"))
 abline(v = 0.1, col = "green", lty = 2)# barre verticale
-lines(density(runif(100, min = 0.01, max = 0.5)), col = "red", lty = 3) # Prior
+lines(density(runif(10, min = 0.01, max = 5)), col = "red", lty = 3) # Prior
 legend("topright", legend = c("Posterior","valeurs de base","Prior"), col = c("black","green","red"), lty = c(1,2,3))
 
 
