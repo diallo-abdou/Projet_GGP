@@ -13,7 +13,6 @@ A <- lapply(
   packages,
   FUN = function(x) {
     if (!require(x, character.only = TRUE)) {
-      install.packages(x, dependencies = TRUE)
       library(x, character.only = TRUE)
     }
   }
@@ -21,10 +20,110 @@ A <- lapply(
 
 ```
 
-# Plan
+# données simulées
+
+## Simulation
+```{r}
+set.seed(123)
+THETA <- 1
+NLOCI <- 100
+model_bottleneck <- coal_model(sample_size =  20,loci_number =  NLOCI,loci_length =  NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  feat_size_change(0.1, time = 0.25) +
+  feat_size_change(1, time = 0.5)+
+  sumstat_sfs("sfs")+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi")+
+  sumstat_trees(name="trees") 
+sim <- simulate(model_bottleneck)
+
+obs <- data.frame(mean_pi = mean(sim$pi),
+                  se_pi = sd(sim$pi)/sqrt(NLOCI), 
+                  mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
+                  se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+
+coal_time <- rep(NA,100)
+for (i in 1:NLOCI) {
+  tr <- read.tree(text = sim$trees[[i]][[1]])
+  btimes=sum(branching.times(as.phylo(tr)))
+  coal_time[i] <- btimes
+}
+
+
+```
+
+## représentations
+```{r}
+hist(sim$pi,main=paste("Mean pi =",round(obs$mean_pi,2)," +/- ",round(1.96*obs$se_pi,2)),breaks=30)
+hist(sim$Dtaj,main=paste("Mean Dtaj =",round(obs$mean_Dtaj,2),"+/-",round(1.96*obs$se_Dtaj,2)),breaks=30)
+barplot(sim$sfs, main="SFS")
+tr <- read.tree(text = sim$trees[[1]][[1]])
+plot(tr,main="Example of a genealogy")
+hist(coal_time)
+```
+
+```{r}
+# Default values corresponds to scenarios 1
+
+# Création des 30 jdd observé
+set.seed(123)
+n_obs=30
+tot_obs <- data.frame(mean_pi = character(),
+                 mean_Dtaj = character(),
+                 mean_coal_time = character())
+
+for (i in 1:n_obs) { 
+NPAST <- 0.2 
+TCHANGE <- 0.1 
+THETA <- 1
+NLOCI <- 100
+
+model <- coal_model(sample_size =  20,loci_number =  NLOCI,loci_length =  NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  feat_size_change(0.1, time = 0.25) +
+  feat_size_change(1, time = 0.5)+
+  sumstat_sfs("sfs")+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi")+
+  sumstat_trees(name="trees") 
+sim <- simulate(model)
+
+mean_pi <- mean(sim$pi)
+#se_pi <- sd(sim$pi)/sqrt(NLOCI)
+mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
+#se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
+coal_time_temp <- rep(NA,100)
+for (i in 1:NLOCI) {
+  tr <- read.tree(text = sim$trees[[i]][[1]])
+  btimes=sum(branching.times(as.phylo(tr)))
+  coal_time_temp[i] <- btimes
+}
 
 
 
+
+obs <- data.frame(mean_pi = mean(sim$pi), 
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T),
+                 mean_coal_time = mean(coal_time_temp,na.rm = T)
+                 )
+
+tot_obs=rbind(tot_obs,obs)
+
+}
+tot_obs
+
+hist(tot_obs$mean_pi)
+hist(tot_obs$mean_Dtaj)
+hist(tot_obs$mean_coal_time)
+
+
+```
+
+# sans évolution de la taille de population
+```{r}
+
+#dist= sqrt(sum(( obs_donnee[,c("mean_pi", "mean_Dtaj")] /simu[,c("mean_pi","mean_Dtaj")] -1 )^2)    )
+```
 
 
 
