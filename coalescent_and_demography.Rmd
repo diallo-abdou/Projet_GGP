@@ -24,7 +24,7 @@ A <- lapply(
 
 ## Simulation
 ```{r}
-set.seed(123)
+
 THETA <- 1
 NLOCI <- 100
 model_bottleneck <- coal_model(sample_size =  20,loci_number =  NLOCI,loci_length =  NLOCI,ploidy = 2)+
@@ -35,6 +35,7 @@ model_bottleneck <- coal_model(sample_size =  20,loci_number =  NLOCI,loci_lengt
   sumstat_tajimas_d(name = "Dtaj") +
   sumstat_nucleotide_div(name = "pi")+
   sumstat_trees(name="trees") 
+set.seed(123) #correspond à la première simulations dans la boucle de 30
 sim <- simulate(model_bottleneck)
 
 obs <- data.frame(mean_pi = mean(sim$pi),
