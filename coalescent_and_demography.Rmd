@@ -550,6 +550,7 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   
   big_data <- data.frame()
   data_obs <- data.frame()
+  set.seed(123)
   for (j in 1:(nb_obs)) {
     #if(j%in%seq(nb_obs/10,nb_obs,10)){
     #  print(paste0(j/nb_obs*100, "%"))
@@ -561,7 +562,7 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   feat_size_change(NPAST1, time = TCHANGE1)+
   sumstat_tajimas_d(name = "Dtaj") +
   sumstat_nucleotide_div(name = "pi")
-    set.seed(j)
+    #set.seed(j)
     sim <- simulate(model_bottleneck)
 
     obs <- data.frame(mean_pi = mean(sim$pi), 
@@ -587,7 +588,7 @@ results <- estimation_V2(100,1, obs, coupe=F)
 ```
 
 ```{r}
-results <- bottleneck_V3(3,100,1, coupe = T)
+results <- bottleneck_V3(2,100,1, coupe = T)
 #results <- bottleneck_V3(100,10,1, coupe = F)
 ```
 
