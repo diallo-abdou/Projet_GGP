@@ -412,12 +412,10 @@ sim <- simulate(model_bottleneck)
 
   # Création d'un dataframe pour ggplot2
 simu <- data.frame(mean_pi = mean(sim$pi), 
-                 se_pi = sd(sim$pi)/sqrt(NLOCI), 
-                 mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
-                 se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T))
 
   # Compare obs and simu
-  dist = sqrt(sum((obs[,c("mean_pi", "se_pi", "mean_Dtaj", "se_Dtaj")]/simu[,c("mean_pi", "se_pi", "mean_Dtaj", "se_Dtaj")]-1)^2))
+  dist = sqrt(sum((obs[,c("mean_pi", "mean_Dtaj")]/simu[,c("mean_pi", "mean_Dtaj")]-1)^2))
   return(dist)
 }
 
@@ -553,9 +551,9 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   big_data <- data.frame()
   data_obs <- data.frame()
   for (j in 1:(nb_obs)) {
-    if(j%in%seq(nb_obs/10,nb_obs,10)){
-      print(paste0(j, "%"))
-    }
+    #if(j%in%seq(nb_obs/10,nb_obs,10)){
+    #  print(paste0(j/nb_obs*100, "%"))
+    #}
     #simulation d'un jeu de données obs
     model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
   feat_mutation(rate = THETA)+
@@ -563,12 +561,11 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   feat_size_change(NPAST1, time = TCHANGE1)+
   sumstat_tajimas_d(name = "Dtaj") +
   sumstat_nucleotide_div(name = "pi")
+    set.seed(j)
     sim <- simulate(model_bottleneck)
 
     obs <- data.frame(mean_pi = mean(sim$pi), 
-                      se_pi = sd(sim$pi)/sqrt(NLOCI), 
-                      mean_Dtaj = mean(sim$Dtaj,na.rm = T), 
-                      se_Dtaj = var(sim$Dtaj,na.rm = T)/sqrt(NLOCI))
+                      mean_Dtaj = mean(sim$Dtaj,na.rm = T))
     data_obs <- rbind(data_obs,obs)
     # simulation de nb_simul jeux de données simulés dont on va déterminer les paramètres
     results <- estimation_V2(nb_simul,sep,obs,coupe)
@@ -588,8 +585,9 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
 ```{r}
 results <- estimation_V2(100,1, obs, coupe=F)
 ```
+
 ```{r}
-results <- bottleneck_V3(20,50,2, coupe = T)
+results <- bottleneck_V3(3,100,1, coupe = T)
 #results <- bottleneck_V3(100,10,1, coupe = F)
 ```
 
