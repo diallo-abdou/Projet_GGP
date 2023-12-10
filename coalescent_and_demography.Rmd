@@ -121,7 +121,38 @@ plot(tr,main="Example of a genealogy")
 
 ```
 
+## donnée observé bootlnek
+```{r}
+# Création des 30 jdd observé
+start_time <- Sys.time()
+set.seed(123)
+n_obs=30
+tot_obs <- data.frame(mean_pi = character(),
+                 mean_Dtaj = character())
+for (i in 1:n_obs) { 
 
+THETA <- 1
+NLOCI <- 100
+model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
+  feat_mutation(rate = THETA)+
+  feat_size_change(0.1, time = 0.25) +
+  feat_size_change(1, time = 0.5)+
+  #sumstat_sfs("sfs")+
+  sumstat_tajimas_d(name = "Dtaj") +
+  sumstat_nucleotide_div(name = "pi") 
+set.seed(i)
+sim <- simulate(model_bottleneck)
+
+obs <- data.frame(mean_pi = mean(sim$pi), 
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T)
+                 )
+tot_obs=rbind(tot_obs,obs)
+
+}
+tot_obs
+summary(tot_obs)
+b_times_fast <- Sys.time() - start_time; b_times_fast
+```
 
 
 
@@ -241,7 +272,7 @@ top_1000_df <- list()
 n_iteration=10000
 start_time100 <- Sys.time()
 
-for (num_obs in 1:nrow(tot_obs)) { 
+for (num_obs in 3:3) { 
 # stock des estimations
 df_stock <- data.frame( 
                  Nanc = character(), 
@@ -269,16 +300,22 @@ message("Iteration: ", num_obs, " sur ", nrow(tot_obs))
 end_time100 <- Sys.time() 
 execution_time <- end_time100 - start_time100; execution_time
 
+top_1000_df
+#save=top_1000_df
+#summary(save_1_8_top100$estima_avec_obs_1)
+summary(top_1000_df$estima_avec_obs_1)
+
 #top_1000_df[["estima_avec_obs_1"]]
 #summary( top_1000_df[["estima_avec_obs_1"]] )
 
+top_1000_df
 # on combine tous les top 100 
 all_top_1000<- data.frame(
   Nanc = character(),
   TCHANGE = character(),
   dist = character()
 )
-
+# VALIDITE on stock la moyenne de chaque top 100
 sctoc=data.frame(moy_Nanc=character(),
                  moy_TCHANGE=character(),
                  moy_dis=character()
@@ -286,8 +323,9 @@ sctoc=data.frame(moy_Nanc=character(),
 for (k in 1:nrow(tot_obs)) {
   nom_df = paste0("estima_avec_obs_", k)
   all_top_1000 <- rbind(all_top_1000, top_1000_df[[nom_df]] )
-  # validité
   
+  
+  # validité
   moy= data.frame(moy_Nanc=top_1000_df[[nom_df]][,1],
                  moy_TCHANGE=top_1000_df[[nom_df]][,2],
                  moy_dis=top_1000_df[[nom_df]][,3]
@@ -295,22 +333,28 @@ for (k in 1:nrow(tot_obs)) {
   sctoc=rbind(sctoc, moy)
 }
 
+# 
 all_top_1000_trie <- all_top_1000 %>% arrange(dist)
 top_1000_1000 = head(all_top_1000_trie,100)
 top_1000_1000
+var(top_1000_1000$dist)
+var(tot_obs$mean_pi)
+var(tot_obs$mean_Dtaj)
+
 
 # validité
 hist(sctoc$moy_Nanc)
 mean(sctoc$moy_Nanc)
 sd(sctoc$moy_Nanc)
 
+
+
+
 # rappel NPAST <- 0.2 , TCHANGE <- 0.1 
 ggpairs(top_1000_1000[,1:2])
 summary(top_1000_1000)
 
-var(top_1000_1000$dist)
-var(tot_obs$mean_pi)
-var(tot_obs$mean_Dtaj)
+
 
 
 dens <- density(top_1000_1000[, 1], na.rm = TRUE)
