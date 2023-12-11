@@ -365,8 +365,26 @@ model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
   feat_size_change(1, time = 0.5)+
   sumstat_sfs("sfs")+
   sumstat_tajimas_d(name = "Dtaj") +
-  sumstat_nucleotide_div(name = "pi") 
-sim <- simulate(model_bottleneck)
+  sumstat_nucleotide_div(name = "pi")+
+  sumstat_trees("trees")
+sim1 <- simulate(model_bottleneck)
+sim2 <- simulate(model_bottleneck)
+tr <- read.tree(text = sim1$trees[[1]][[1]])
+plot(tr,main="Example of a genealogy", direction = "downwards")
+
+mean(sim1$Dtaj)
+mean(sim2$Dtaj)
+mean(sim1$pi)
+mean(sim2$pi)
+
+coal_time_temp <- rep(NA,100)
+for (i in 1:NLOCI) {
+  tr <- read.tree(text = sim2$trees[[i]][[1]])
+  btimes=sum(branching.times(as.phylo(tr)))
+  coal_time_temp[i] <- btimes
+}
+mean_t1 <- mean(coal_time_temp)
+mean_t2 <- mean(coal_time_temp)
 
  obs <- data.frame(mean_pi = mean(sim$pi), 
                   se_pi = sd(sim$pi)/sqrt(NLOCI), 
@@ -396,31 +414,40 @@ TCHANGE2 <- x[4]
 NLOCI <- 100
 THETA <- 1
 
+# model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
+#   feat_mutation(rate = THETA)+
+#   feat_size_change(NPAST2, time = TCHANGE2) +
+#   feat_size_change(NPAST1, time = TCHANGE1)+
+#   sumstat_tajimas_d(name = "Dtaj") +
+#   sumstat_nucleotide_div(name = "pi")+
+#   sumstat_trees("trees")
 model_bottleneck <- coal_model(20,NLOCI,NLOCI,ploidy = 2)+
   feat_mutation(rate = THETA)+
   feat_size_change(NPAST2, time = TCHANGE2) +
   feat_size_change(NPAST1, time = TCHANGE1)+
   sumstat_tajimas_d(name = "Dtaj") +
-  sumstat_nucleotide_div(name = "pi")+
-  sumstat_trees("trees")
+  sumstat_nucleotide_div(name = "pi")
 sim <- simulate(model_bottleneck)
 
 # mean_pi <- mean(sim$pi)
 # se_pi <- sd(sim$pi)/sqrt(NLOCI)
 # mean_Dtaj <- mean(sim$Dtaj,na.rm = T) # Dtaj is not defined if there is no SNPs
 # se_Dtaj <- var(sim$Dtaj,na.rm = T)/sqrt(NLOCI)
-coal_time_temp <- rep(NA,100)
-for (i in 1:NLOCI) {
-  tr <- read.tree(text = sim$trees[[i]][[1]])
-  btimes=sum(branching.times(as.phylo(tr)))
-  coal_time_temp[i] <- btimes
-}
+# coal_time_temp <- rep(NA,100)
+# for (i in 1:NLOCI) {
+#   tr <- read.tree(text = sim$trees[[i]][[1]])
+#   btimes=sum(branching.times(as.phylo(tr)))
+#   coal_time_temp[i] <- btimes
+# }
 
 
-  # Création d'un dataframe pour ggplot2
+#   # Création d'un dataframe pour ggplot2
+# simu <- data.frame(mean_pi = mean(sim$pi), 
+#                  mean_Dtaj = mean(sim$Dtaj,na.rm = T),
+#                  mean_coal_time <- mean(coal_time_temp, na.rm=T))
 simu <- data.frame(mean_pi = mean(sim$pi), 
-                 mean_Dtaj = mean(sim$Dtaj,na.rm = T),
-                 mean_coal_time <- mean(coal_time_temp, na.rm=T))
+                 mean_Dtaj = mean(sim$Dtaj,na.rm = T))
+
 
   # Compare obs and simu
   dist = sqrt(sum((obs[,c("mean_pi", "mean_Dtaj")]/simu[,c("mean_pi", "mean_Dtaj")]-1)^2))
@@ -545,9 +572,77 @@ estimation_V2 <- function(nb_simul, sep, obs, coupe){
   }
 }
 
+estimation_V3 <- function(nb_simul, sep, obs, coupe){
+  df_stock <- data.frame(NPAST1 = character(), 
+                 TCHANGE1 = character(),
+                 NPAST2 = character(), 
+                 TCHANGE2 = character(), 
+                 dist= character())
+  for (k in 1:2) {
+    if(k==1){
+      min_NPAST1 <- 0.1
+      max_NPAST1 <- 5
+      min_TCHANGE1 <- 0
+      max_TCHANGE1 <- 2
+      min_NPAST2 <- 0.1
+      min_TCHANGE2 <- 0
+      
+      for (i in 1:(nb_simul/sep)){
+        NPAST1 <- runif(n = 1,min = min_NPAST1,max = max_NPAST1)
+        TCHANGE1 <- runif(n = 1,min = min_TCHANGE1,max = max_TCHANGE1)
+        NPAST2 <- runif(n = 1,min = min_NPAST2,max = NPAST1)
+        TCHANGE2 <- runif(n = 1,min = min_TCHANGE2,max = TCHANGE1) 
+  
+        valeurs=c(NPAST1,TCHANGE1,NPAST2,TCHANGE2)
+  
+        df_i=data.frame(NPAST1 = NPAST1, 
+                    TCHANGE1 = TCHANGE1,
+                    NPAST2 = NPAST2, 
+                    TCHANGE2 = TCHANGE2, 
+                    dist= estimation_bottleneck(valeurs, obs))
+  
+        df_stock=rbind(df_stock,df_i)
+      }
+      df <- df_stock %>% arrange(dist)
+      top <- head(df, ceiling(5*(nb_simul/sep)/100)) #10% les meilleures
+      min_NPAST1 <- min(top[,1])
+      max_NPAST1 <- max(top[,1])
+      min_TCHANGE1 <- min(top[,2])
+      max_TCHANGE1 <- max(top[,2])
+      min_NPAST2 <- min(top[,3])
+      min_TCHANGE2 <- min(top[,4])
+    }else{
+      for (i in 1:(nb_simul-nb_simul/sep)){
+        NPAST1 <- runif(n = 1,min = min_NPAST1,max = max_NPAST1)
+        TCHANGE1 <- runif(n = 1,min = min_TCHANGE1,max = max_TCHANGE1)
+        NPAST2 <- runif(n = 1,min = min_NPAST2,max = NPAST1)
+        TCHANGE2 <- runif(n = 1,min = min_TCHANGE2,max = TCHANGE1) 
+  
+        valeurs=c(NPAST1,TCHANGE1,NPAST2,TCHANGE2)
+  
+        df_i=data.frame(NPAST1 = NPAST1, 
+                    TCHANGE1 = TCHANGE1,
+                    NPAST2 = NPAST2, 
+                    TCHANGE2 = TCHANGE2, 
+                    dist= estimation_bottleneck(valeurs, obs))
+  
+        df_stock=rbind(df_stock,df_i)
+      }
+    }
+  }
+  if(coupe){
+    df_stock <- df_stock %>% arrange(dist)
+    top <- head(df_stock, ceiling(5*(nb_simul)/100)) #10% les meilleures
+    return(top)
+  }else{
+    return(df_stock)
+  }
+}
+
+
 library(reshape)
 #V3 où on estime 100 jeux de data et on fait la procédure si dessus pour les 100 jeux
-bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe){
+bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe, start, method, seed){
   #paramètres pour les nb_obs estimations observés
   NPAST1 <-  param[1]
   TCHANGE1 <- param[2] 
@@ -558,7 +653,7 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   
   big_data <- data.frame()
   data_obs <- data.frame()
-  for (j in 1:(nb_obs)) {
+  for (j in start:(nb_obs)) {
     #if(j%in%seq(nb_obs/10,nb_obs,10)){
     #  print(paste0(j/nb_obs*100, "%"))
     #}
@@ -570,7 +665,9 @@ bottleneck_V3 <- function(nb_obs, nb_simul, sep, param=c(1,0.5,0.1,0.25), coupe)
   sumstat_tajimas_d(name = "Dtaj") +
   sumstat_nucleotide_div(name = "pi")+
       sumstat_trees("trees")
-    set.seed(j)
+    if(seed){
+      set.seed(j)
+    }
     sim <- simulate(model_bottleneck)
     
     coal_time_temp <- rep(NA,100)
@@ -585,14 +682,20 @@ for (i in 1:NLOCI) {
                       mean_coal_time = mean(coal_time_temp, na.rm=T))
     data_obs <- rbind(data_obs,obs)
     # simulation de nb_simul jeux de données simulés dont on va déterminer les paramètres
-    results <- estimation_V2(nb_simul,sep,obs,coupe)
+    if(method=="V2"){
+      results <- estimation_V2(nb_simul,sep,obs,coupe)
+    }
+    if(method=="V3"){
+      results <- estimation_V3(nb_simul,sep,obs,coupe)
+    }
+    #results <- estimation_V2(nb_simul,sep,obs,coupe)
     big_data <- rbind(big_data,results)
   }
   if(coupe){
-    big_data$obs <- melt(sapply(1:nb_obs, rep, ceiling(nb_simul*0.05)))$value
+    big_data$obs <- melt(sapply(start:nb_obs, rep, ceiling(nb_simul*0.05)))$value
     return(list(big_data, data_obs))
   }else{
-    big_data$obs <- melt(sapply(1:nb_obs, rep, nb_simul))$value
+    big_data$obs <- melt(sapply(start:nb_obs, rep, nb_simul))$value
   return(list(big_data, data_obs))
   }
 }
@@ -604,13 +707,55 @@ results <- estimation_V2(100,1, obs, coupe=F)
 ```
 
 ```{r}
-results <- bottleneck_V3(2,100,1, coupe = T)
+results1 <- bottleneck_V3(1,10000,10, coupe = T, start = 1)
+results1_bis <- bottleneck_V3(1,10000,10, coupe = T, start = 1, method = "V3")
+results1_bis2 <- bottleneck_V3(1,10000,10, coupe = T, start = 1, method = "V2", seed = F)
+results2 <- bottleneck_V3(2,10000,10, coupe = T, start = 2, method = "V2", seed = F)
+results3 <- bottleneck_V3(3,10000,10, coupe = T, start = 3, method = "V2", seed = F)
+results4 <- bottleneck_V3(4,10000,10, coupe = T, start = 4, method = "V2", seed = F)
+results5 <- bottleneck_V3(5,10000,10, coupe = T, start = 5, method = "V2", seed = F)
+results6 <- bottleneck_V3(6,10000,10, coupe = T, start = 6, method = "V2", seed = F)
+results7 <- bottleneck_V3(7,10000,10, coupe = T, start = 7, method = "V2", seed = F)
+results8 <- bottleneck_V3(8,10000,10, coupe = T, start = 8, method = "V2", seed = F)
+results9 <- bottleneck_V3(9,100,1, coupe = T, start = 9)
+results10 <- bottleneck_V3(10,100,1, coupe = T, start = 10)
 #results <- bottleneck_V3(100,10,1, coupe = F)
 ```
 
 ```{r}
-df <- results[[1]] %>% arrange(dist)
+results <- NULL
+for (i in 11:30) {
+  results <- bottleneck_V3(i,10000,10, coupe = T, start = i, method = "V2", seed = F)
+  sim <- results[[1]]
+  obs <- results[[2]]
+  titre_sim <- paste0("estimations pour l'observation", i,".csv")
+  titre_obs <- paste0("observation", i,".csv")
+  write.table(sim,titre_sim)
+  write.table(obs,titre_obs)
+  rm(results)
+}
+
+```
+
+```{r}
+tab_tot_simul <- rbind(results7[[1]],
+                 results8[[1]])
+
+tab_tot_obs <- rbind(results7[[2]],
+                 results8[[2]])
+
+df <- tab_tot_simul %>% arrange(dist)
+top100 <- head(df, 100)
+write.table(tab_tot_simul,"estimations pour 7 et 8 obs.csv")
+write.table(tab_tot_obs,"observations (7 à 8).csv")
+
+
+df <- results1[[1]] %>% arrange(dist)
+df_bis <- results1_bis[[1]] %>% arrange(dist)
+df_bis2 <- results1_bis2[[1]] %>% arrange(dist)
 top_100 <- head(df, 100)
+top_100_bis <- head(df, 100)
+top_100_bis2 <- head(df, 100)
 
 for (i in 1:4){ 
   print(ggplot(top_100)+
@@ -618,6 +763,20 @@ for (i in 1:4){
   geom_density(aes(x=top_100[,i]))+
   labs(title = paste0("Distribution de ",colnames(top_100)[i]))+
   geom_vline(xintercept = mean(top_100[,i]), color='red'))
+}
+for (i in 1:4){ 
+  print(ggplot(top_100_bis)+
+  geom_histogram(aes(x=top_100_bis[,i], y=after_stat(density)), position = "identity", bins = 15)+
+  geom_density(aes(x=top_100_bis[,i]))+
+  labs(title = paste0("Distribution de ",colnames(top_100_bis)[i]))+
+  geom_vline(xintercept = mean(top_100_bis[,i]), color='red'))
+}
+for (i in 1:4){ 
+  print(ggplot(top100)+
+  geom_histogram(aes(x=top100[,i], y=after_stat(density)), position = "identity", bins = 15)+
+  geom_density(aes(x=top100[,i]))+
+  labs(title = paste0("Distribution de ",colnames(top100)[i]))+
+  geom_vline(xintercept = mean(top100[,i]), color='red'))
 }
 for (i in 1:4){ 
   print(ggplot(results[[1]])+
@@ -635,10 +794,13 @@ for (i in 1:length(unique(results[[1]]$obs))) {
 colnames(mean_mean) <- colnames(results[[1]])
 ecart_entre_obs <- apply(mean_mean,2,sd)
 
-#compare aux 100 obs
+#compare aux 30 obs
 ecart_entre_observes <- apply(results[[2]],2,sd)
 ecart_entre_obs
 ecart_entre_observes
+
+mean(top_100$dist)
+sd(top_100$dist)
 ```
 
 
@@ -662,5 +824,68 @@ for (i in 7:8){
   geom_density(aes(x=results[[1]][,i]))+
   labs(title = paste0("Distribution de ",colnames(results[[1]])[i]))+
   geom_vline(xintercept = mean(results[[1]][,i]), color='red'))
+}
+```
+
+```{r}
+data1_sim <- read.csv("estimations pour 1 à 5 obs.csv", sep = " ")
+data2_sim <- read.csv("estimations pour 5 et 6 obs.csv", sep = " ")
+data3_sim <- read.csv("estimations pour 7 et 8 obs.csv", sep = " ")
+data4_sim <- read.csv("estimations pour l'observation9.csv", sep = " ")
+data5_sim <- read.csv("estimations pour l'observation10.csv", sep = " ")
+
+data1_obs <- read.csv("observations (1 à 5).csv", sep = " ")
+data2_obs <- read.csv("observations (5 à 6).csv", sep = " ")
+data3_obs <- read.csv("observations (7 à 8).csv", sep = " ")
+data4_obs <- read.csv("observation9.csv", sep = " ")
+data5_obs <- read.csv("observation10.csv", sep = " ")
+
+
+simul <- rbind(data1_sim,
+               data2_sim,
+               data3_sim,
+               data4_sim,
+               data5_sim)
+obs <- rbind(data1_obs,
+               data2_obs,
+               data3_obs,
+               data4_obs,
+               data5_obs)
+
+best1 <- data.frame()
+for (i in 1:length(unique(simul$obs))) {
+  sub <- simul[which(simul$obs==i),]
+  classe <- sub %>% arrange(dist)
+  best <- head(classe,100)
+  best1 <- rbind(best1,best)
+}
+classe <- best1 %>% arrange(dist)
+top100 <- head(classe,100)
+
+mean_mean <- c()
+sd_sd <- c()
+for (i in 1:length(unique(best1$obs))) {
+  mean_mean[i] <- mean(best1[which(best1$obs==i),]$dist)
+  sd_sd[i] <- sd(best1[which(best1$obs==i),]$dist)
+}
+big_mean <- mean(mean_mean)
+big_sd <- sd(sd_sd)
+
+```
+```{r}
+plot(density(top_100[,i], na.rm = TRUE), 
+      main = paste0("Distribution de :",names(top_100[,i]) ))
+
+
+prior_min <- c(0.1,0,0,0)
+prior_max <- c(5,2,5,2)
+for (i in 1:4){ 
+  print(ggplot(top100)+
+  geom_histogram(aes(x=top100[,i], y=after_stat(density)), position = "identity", bins = 15, alpha=0.7)+
+  geom_density(aes(x=top100[,i]))+
+  geom_density(aes(x=runif(100,prior_min[i],prior_max[i])), color='green')+
+  labs(title = paste0("Distribution de ",colnames(top100)[i]))+
+  geom_vline(xintercept = mean(top100[,i]), color='red')+
+  theme_classic())
 }
 ```
